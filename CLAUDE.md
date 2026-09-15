@@ -7,6 +7,10 @@ Project-specific instructions for Claude Code working in this repo. These apply 
 - `docs/Chalkline-walkthrough.pdf` — original product spec and rationale. Source of truth for product intent.
 - `docs/pilot-implementation-plan.md` — confirmed build plan for the v1 pilot.
 - `docs/pilot-scope.md` — scope additions from PM review. The functionality/process items (A1, A2, B2, B3, B4) are adopted; the B1 numeric success thresholds are proposed and still need explicit confirmation before the pilot starts.
+- `docs/BUILD.md` — **the canonical build reference.** Consolidates the three docs above into one
+  numbered structure (§1-§16: locked decisions, schema, mechanics, screens, copy deck, design
+  tokens, acceptance criteria, out-of-scope). Build prompts cite it by section number; the other
+  docs are its sources and fuller rationale where it's terse.
 - `reviews/` — point-in-time reviews (PM, security, etc.). Historical record — add new dated reviews rather than editing old ones.
 
 Treat the "Confirmed decisions" in `pilot-implementation-plan.md`, and `pilot-scope.md`'s adopted items above, as settled. If a request would reopen one of those — or would lock in the still-open B1 thresholds — say so explicitly and confirm before proceeding. Don't silently comply or silently refuse.
@@ -38,6 +42,8 @@ Treat the "Confirmed decisions" in `pilot-implementation-plan.md`, and `pilot-sc
 - The "deliberately missing" list from the original spec (money/stakes, notifications, multi-habit, setup screen, dispute flow, stats, tab bar) stays out of v1 unless the user explicitly reopens it.
 - Check any new feature request against the pilot's actual hypothesis — does fixed peer witnessing improve habit adherence? Flag additions that don't serve that test rather than building them by default.
 - Keep `pilot-scope.md`'s success criteria in view when reporting progress or pilot results — "done" means passing tests and a clean build, "successful" is a separate, higher bar defined there.
+- UI copy comes from `docs/BUILD.md` §10 verbatim — don't invent or rephrase strings while implementing. Copy is locked for this build, not locked forever: it's expected to evolve after real pilot feedback, but changes go through the user, not ad-hoc mid-build rewrites.
+- Visual styling follows `docs/BUILD.md` §11 (near-black hero, off-white content sections, crimson accent, green backed-state, bold condensed headline type, card-based mobile-first). Its exact hex/font values are directional, not confirmed against the actual mockup art — flag rather than silently firm them up if precision starts to matter.
 
 ## Testing standards
 
@@ -48,9 +54,9 @@ Treat the "Confirmed decisions" in `pilot-implementation-plan.md`, and `pilot-sc
 
 ## Security guidelines
 
-- Server authorization must use `supabase.auth.getUser()` (or `getClaims()`) — never authorize from `getSession()` alone, since its data isn't independently revalidated server-side.
+- Server authorization defaults to `supabase.auth.getClaims()` (verifies the JWT locally on every call, no network round-trip) — use `getUser()` instead only where a fresh, server-verified record is specifically needed. Never authorize from `getSession()` alone; its data isn't revalidated server-side.
 - RLS is reviewed table-by-table on any schema change — self-or-corner visibility only; no client `UPDATE`/`DELETE` on `proofs` or `votes`.
-- Never commit secrets. `NEXT_PUBLIC_*` values are public by design — only the Supabase project URL and publishable/anon key belong there. The Supabase service-role key, and any other secret, stays server-only and never appears in client bundles, logs, or source control.
+- Never commit secrets. `NEXT_PUBLIC_*` values are public by design — only the Supabase project URL and publishable key (`sb_publishable_...`, formerly the anon key) belong there. The Supabase secret key (`sb_secret_...`, formerly service_role), and any other secret, stays server-only and never appears in client bundles, logs, or source control.
 - Run the `security-review` skill against any diff touching auth, RLS, storage policies, or the vote/proof state machine before it merges. If that skill isn't available in a given environment, work through the same checklist by hand: auth verified on every route, no client write path to `votes`/`proofs.status`, RLS reviewed table-by-table, storage private + signed-URL-only, zod validation on inputs, no secrets in source.
 
 ## Git workflow

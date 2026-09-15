@@ -121,15 +121,22 @@ schema, not hand-written.
   `REVOKE EXECUTE FROM PUBLIC` + grant only to `authenticated`, row locking (`FOR UPDATE`) for
   atomicity, and a test for both the allowed and the denied case.
 - Storage bucket is private; every read is a signed URL. Never a public bucket.
-- Never the service-role key in anything that reaches the browser or a `NEXT_PUBLIC_*` variable.
+- Never the secret key (`sb_secret_...`, or a legacy `service_role` key) in anything that reaches
+  the browser or a `NEXT_PUBLIC_*` variable. Note that secret keys now 401 automatically if used
+  from a browser (matched on the User-Agent header) — a real guardrail the old service_role JWT
+  didn't have, but not a substitute for keeping it server-only.
 
 ## §7 — Auth flow
 
-Magic-link email auth via Supabase, no passwords. `middleware.ts` refreshes the session on every
-request. Server code authorizes with `supabase.auth.getUser()` (or `getClaims()`) — never from
-`getSession()` alone, since session-cookie data isn't independently revalidated server-side.
+Magic-link email auth via Supabase, no passwords. `proxy.ts` (Next.js 16 renamed `middleware.ts` to
+`proxy.ts` — same file convention and job, refreshing the session on every request; use `proxy.ts`
+for anything scaffolded from here on) refreshes the session on every request. Server code defaults
+to `supabase.auth.getClaims()` for protecting routes/data — it verifies the JWT signature locally
+against the project's JWKS on every call, no network round-trip. Use `getUser()` instead only where
+a fresh, server-verified record is specifically needed (it costs a call to the Auth server). Never
+`getSession()` alone for authorization — its data isn't revalidated server-side.
 
-Files: `middleware.ts`, `lib/supabase/server.ts`, `lib/supabase/client.ts`, `app/login/page.tsx`,
+Files: `proxy.ts`, `lib/supabase/server.ts`, `lib/supabase/client.ts`, `app/login/page.tsx`,
 `app/auth/callback/route.ts`.
 
 ## §8 — Mechanics (server actions & business logic)
@@ -152,7 +159,9 @@ Files: `middleware.ts`, `lib/supabase/server.ts`, `lib/supabase/client.ts`, `app
    near-simultaneous votes can't both resolve it independently. Handles the split-vote case (1 back
    + 1 call stays `waiting`) correctly.
 5. **36h auto-clear** — `resolve_stale_proof()` SQL function (same locking pattern) +
-   `/api/cron/resolve-proofs` route on `vercel.json` (daily on Hobby). **Backstop**: on Home load,
+   `/api/cron/resolve-proofs` route on `vercel.json` (daily on Hobby — Vercel may run it any time
+   within the scheduled hour, not exactly on the minute, to spread load across accounts; don't
+   assume it fires at precisely e.g. `05:00`). **Backstop**: on Home load,
    opportunistically resolve any of the user's own witnessed proofs already stale, via
    `resolve_stale()`, so the visible experience stays close to 36h.
 6. **`best_run()`** — see §5.
@@ -244,6 +253,10 @@ the actual PDF pages (zoomed) before treating any specific value below as final.
   Oswald, or Anton — pick one and confirm it reads correctly at the hero's large size); regular
   sans (system stack or Inter) for body/UI text
 - Layout: card-based, mobile-first, generous corner radius on cards, single-column
+
+Implementation note: Tailwind v4 (current default with `create-next-app --tailwind`) is CSS-first
+— there's no `tailwind.config.ts` by default. Define these as custom properties in an `@theme`
+block in `globals.css` (alongside `@import "tailwindcss";`), not in a config file.
 
 ## §12 — PWA & meta
 

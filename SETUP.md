@@ -28,11 +28,18 @@ decisions, including the pilot timezone (`America/New_York`, hardcoded — not a
 
 **3. Supabase** — [supabase.com](https://supabase.com), free tier.
 - Create a project. Region: closest to your pilot group.
-- From **Project Settings → API**: copy the **Project URL** and the **anon public** key.
-- From the same page: copy the **service_role** key. Treat it like a password.
-- The **project ref** is the subdomain of your project URL (`https://<ref>.supabase.co`).
-- From your **account** settings → **Access Tokens**: create a personal access token named
-  `claude-code`. This is what lets Claude read your schema.
+- From **Project Settings → API**: copy the **Project URL** and the **publishable** key
+  (`sb_publishable_...` — a new project shows this name; older projects may still say
+  **anon public**. Same purpose either way).
+- From the same page: copy the **secret** key (`sb_secret_...`; older projects: **service_role**).
+  Treat it like a password.
+- The **project ref** is the subdomain of your project URL (`https://<ref>.supabase.co`). Not a
+  secret — it's already visible in the URL — but you'll need it for `.mcp.json` in Part 2.
+- No personal access token needed. The Supabase MCP server is hosted and authenticates via OAuth
+  from inside Claude Code (Part 3) — skip creating one unless something later specifically asks
+  for it. If you ever do need one (e.g. CI), it lives under your **account** avatar → **Account
+  Preferences → Access Tokens** (not the project sidebar), and Supabase's own guidance is to use a
+  **scoped** token — read-only, one project — rather than a classic full-account one.
 
 **4. Vercel** — [vercel.com](https://vercel.com), free tier. Sign in with GitHub.
 
@@ -44,11 +51,14 @@ in the next step, but create it now so nothing is ever committed):
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
-SUPABASE_SERVICE_ROLE_KEY=<service role key>
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+SUPABASE_SECRET_KEY=<secret key>
 SUPABASE_PROJECT_REF=<ref>
-SUPABASE_ACCESS_TOKEN=<the claude-code personal access token>
 ```
+
+`SUPABASE_PROJECT_REF` isn't read by the app — it's kept here only as a convenience reference for
+writing `.mcp.json` in Part 2. No `SUPABASE_ACCESS_TOKEN`: the hosted MCP server authenticates via
+OAuth, not a token in this file.
 
 The pilot timezone is hardcoded in `src/lib/appDay.ts` (`docs/BUILD.md` §8), not an env var — no
 `PILOT_TZ` needed.
@@ -90,22 +100,23 @@ plugin costs context in every session.
 > already covered. Stay under roughly 150 lines total — point at `docs/BUILD.md` rather than
 > duplicating its schema or acceptance criteria into `CLAUDE.md`.
 >
-> **2. `.mcp.json`** at the repo root, exactly this:
+> **2. `.mcp.json`** at the repo root, exactly this — replace `<YOUR REF>` with the real
+> `SUPABASE_PROJECT_REF` value from `.env.local` (it's not a secret, safe to commit literally):
 > ```json
 > {
 >   "mcpServers": {
 >     "supabase": {
->       "type": "stdio",
->       "command": "npx",
->       "args": ["-y", "@supabase/mcp-server-supabase@latest", "--read-only",
->                "--project-ref=${SUPABASE_PROJECT_REF}"],
->       "env": { "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}" }
+>       "type": "http",
+>       "url": "https://mcp.supabase.com/mcp?project_ref=<YOUR REF>&read_only=true&features=database,docs"
 >     },
 >     "vercel": { "type": "http", "url": "https://mcp.vercel.com" },
 >     "playwright": { "type": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest"] }
 >   }
 > }
 > ```
+> Both `supabase` and `vercel` are hosted, OAuth-authenticated servers now — no local process, no
+> token in this file. `read_only=true` keeps every query the MCP runs against Postgres read-only at
+> the database-role level, on top of it being scoped to one project.
 >
 > **3. `.claude/settings.json`** with a `PostToolUse` hook matching `Write|Edit` that runs
 > `npx tsc --noEmit && npx next lint`. This is a gate, not a suggestion — if it fails, the edit is
@@ -126,8 +137,9 @@ plugin costs context in every session.
 > `docs/BUILD.md` §15. It reports what it saw; it does not fix things.
 >
 > **7. `.claude/rules/supabase.md`** with frontmatter `paths: ["supabase/**", "app/**/actions.ts",
-> "lib/supabase/**"]` — RLS is mandatory on every table; never use the service role key in anything
-> that reaches the browser; every storage URL handed to a client is a signed URL.
+> "lib/supabase/**"]` — RLS is mandatory on every table; never use the secret key (or a legacy
+> service_role key) in anything that reaches the browser; every storage URL handed to a client is a
+> signed URL.
 >
 > **8. `.claude/rules/ui.md`** with frontmatter `paths: ["app/**/*.tsx", "components/**"]` — tap
 > targets ≥44px, primary controls in the lower half of the screen, no fake status bar, copy comes
@@ -145,9 +157,10 @@ plugin costs context in every session.
 
 # Part 3 — YOU: restart and confirm
 
-Reload the VS Code window so the MCP servers start. Then run `/mcp` — you should see **supabase**,
-**vercel** and **playwright** connected. If Supabase fails, the token or project ref in `.env.local`
-is wrong.
+Reload the VS Code window so the MCP servers start. Then run `/mcp` — **playwright** should show
+connected immediately (it's local). **supabase** and **vercel** will show as needing
+authentication: select each one, choose **Authenticate**, and finish the OAuth flow in the
+browser that opens. If Supabase fails after that, the project ref in `.mcp.json` is wrong.
 
 ---
 
@@ -172,10 +185,12 @@ Storage → New bucket → `proofs`, **private**, and add the two policies from 
 > Scaffold the Next.js app per `docs/BUILD.md` §3 and §4: App Router, TypeScript, Tailwind,
 > `@supabase/ssr` (not the deprecated auth-helpers).
 >
-> Build only the auth path in this step, per §7: `middleware.ts`, `lib/supabase/server.ts`,
+> Build only the auth path in this step, per §7: `proxy.ts` (Next.js 16's replacement for
+> `middleware.ts` — same job, refreshing the session on every request), `lib/supabase/server.ts`,
 > `lib/supabase/client.ts`, `app/login/page.tsx`, `app/auth/callback/route.ts`, and the root layout
-> with the fonts and PWA meta from §12. Server authorization must use `getUser()`/`getClaims()`,
-> never `getSession()` alone.
+> with the fonts and PWA meta from §12. Server authorization defaults to `getClaims()`
+> (fast, local JWT verification on every call); use `getUser()` only where you specifically need a
+> fresh, server-verified record. Never `getSession()` alone for authorization.
 >
 > The login screen must match the Sign in artboard: wordmark, the headline "Prove it to the people
 > who'd know.", the sub-line, an email field, and a "Send me a link" button. Copy verbatim from §10.
@@ -254,8 +269,8 @@ You're already on `feat/v1-mvp` with `origin` set — no new remote needed. Per 
 run (§15) and a security review of the diff both pass.
 
 Import the repo in Vercel (pointed at `feat/v1-mvp` for a preview deploy, or `main` after merge).
-Add the four `NEXT_PUBLIC_*` / `SUPABASE_*` env vars (**not** `SUPABASE_PROJECT_REF` or
-`SUPABASE_ACCESS_TOKEN` — those are local-only, for the MCP server). Deploy.
+Add the three real env vars — `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+`SUPABASE_SECRET_KEY` (**not** `SUPABASE_PROJECT_REF` — that's local-only, for `.mcp.json`). Deploy.
 
 Then in Supabase → Authentication → URL Configuration: set Site URL to the Vercel domain and add
 `https://<domain>/auth/callback`.
@@ -286,7 +301,7 @@ person the first time — the iOS install path is not discoverable.
 
 | Symptom | Cause |
 |---|---|
-| Supabase MCP won't connect | Token or project ref wrong in `.env.local`; reload the window after fixing |
+| Supabase MCP won't connect | Project ref wrong in `.mcp.json`, or OAuth session expired — re-run `/mcp` and re-authenticate |
 | The hook fails on every edit | Dependencies not installed yet — run `npm install` once first |
 | Magic link redirects to a 404 | Redirect URL not added in Supabase Auth settings |
 | Photos load in dev, break in prod | Raw storage path used instead of a signed URL |
@@ -296,6 +311,7 @@ person the first time — the iOS install path is not discoverable.
 ## Do not
 
 - Give the Supabase MCP write access, or point it at anything but the pilot project.
-- Put `SUPABASE_SERVICE_ROLE_KEY` in any variable starting `NEXT_PUBLIC_`.
+- Put `SUPABASE_SECRET_KEY` (or a legacy `SUPABASE_SERVICE_ROLE_KEY`) in any variable starting
+  `NEXT_PUBLIC_`.
 - Build the setup screen, the ledger, money, notifications, or a leaderboard. They are out of scope
   and every one of them was cut deliberately.

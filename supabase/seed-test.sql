@@ -63,7 +63,7 @@ $$;
 
 update public.profiles p
 set display_name = v.name
-from (values (1, 'Linoy Alex'), (2, 'Wit One'), (3, 'Wit Two')) as v(slot, name)
+from (values (1, '<YOUR_NAME>'), (2, 'Wit One'), (3, 'Wit Two')) as v(slot, name)
 join squad q on q.slot = v.slot
 where p.id = q.id;
 
@@ -129,16 +129,39 @@ order by p.display_name;
 commit;
 
 -- ===========================================================================
--- TEARDOWN — run before the real pilot. Deleting the two throwaway auth users
--- cascades to profiles -> habits / corner_members / proofs / votes.
--- Note slot 1 is deliberately NOT deleted; it is your own real account.
+-- TEARDOWN — run before the real pilot.
+--
+-- Slot 1 is deliberately NOT deleted; it is your own real account. That is the
+-- only reason step 2 below is needed at all.
+--
+-- What step 1 cascades (verified against the live database — every FK in this
+-- chain is ON DELETE CASCADE): profiles.id -> auth.users, and corner_members
+-- .subject_id / .witness_id, habits.user_id, proofs.user_id, votes.voter_id
+-- -> profiles, plus proofs.habit_id -> habits and votes.proof_id -> proofs.
+--
+-- So deleting the two throwaway users removes ALL SIX seeded corner rows, not
+-- just their own: the triangle means every row names slot 2 or slot 3 in at
+-- least one column, including the (slot 1 -> witness) pairs. No separate
+-- corner_members cleanup is needed, which is why none appears below.
+--
+-- CLAUDE.md requires explicit buy-in before touching real user data. This
+-- block deletes auth.users rows, so it stays commented out — read it, confirm
+-- the addresses are the throwaway ones, then run it deliberately.
 -- ===========================================================================
 --
+-- -- 1. Remove the throwaway witnesses. Cascades as described above.
 -- delete from auth.users
 -- where lower(email) in (lower('<WITNESS_1_EMAIL>'), lower('<WITNESS_2_EMAIL>'));
 --
--- -- Your own habit and corner rows are not cascaded by the above; clear them too:
--- delete from public.corner_members where subject_id in (
---   select id from auth.users where lower(email) = lower('<YOUR_EMAIL>'));
+-- -- 2. Your own account survives step 1, so its habit does too. Deleting the
+-- --    habit cascades your test proofs and any votes on them.
 -- delete from public.habits where user_id in (
 --   select id from auth.users where lower(email) = lower('<YOUR_EMAIL>'));
+--
+-- NOT covered by any of the above:
+--   - Storage. Proof photos live in storage.objects under a per-user folder
+--     (see policies.sql) and have no FK to auth.users, so they are NOT
+--     cascaded. Empty the `proofs` bucket by hand, or the throwaway accounts'
+--     photos outlive the accounts.
+--   - Slot 1's profiles.display_name keeps whatever step 3 set it to. Cosmetic
+--     only, but reset it if you want your real name back.

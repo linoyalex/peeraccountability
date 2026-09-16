@@ -84,19 +84,29 @@ where p.id = q.id;
 --    seed is for is having something postable on whatever day you run it.
 -- ---------------------------------------------------------------------------
 
+-- Held in a table rather than inlined into the INSERT so step 6 can check what
+-- actually landed against what was intended, instead of trusting the insert.
+create temporary table habit_plan (
+  slot int primary key,
+  name text not null,
+  schedule_type text not null,
+  schedule_config jsonb not null
+) on commit drop;
+
+insert into habit_plan (slot, name, schedule_type, schedule_config) values
+  (1, 'Train before work',  'daily',                  '{}'),
+  (2, 'Read 20 pages',      'weekdays_fixed',         '{"weekdays":[0,1,2,3,4,5,6]}'),
+  (3, 'Run 5k',             'days_per_week_floating', '{"days_per_week":4}');
+
 insert into public.habits (user_id, name, start_date, schedule_type, schedule_config)
 select
   q.id,
-  v.name,
+  hp.name,
   date_trunc('day', (now() at time zone 'America/New_York') - interval '4 hours')::date,
-  v.schedule_type,
-  v.schedule_config::jsonb
-from (values
-  (1, 'Train before work',  'daily',                  '{}'),
-  (2, 'Read 20 pages',      'weekdays_fixed',         '{"weekdays":[0,1,2,3,4,5,6]}'),
-  (3, 'Run 5k',             'days_per_week_floating', '{"days_per_week":4}')
-) as v(slot, name, schedule_type, schedule_config)
-join squad q on q.slot = v.slot
+  hp.schedule_type,
+  hp.schedule_config
+from habit_plan hp
+join squad q on q.slot = hp.slot
 on conflict (user_id) do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -110,21 +120,77 @@ join squad wit on wit.slot <> subj.slot
 on conflict (subject_id, witness_id) do nothing;
 
 -- ---------------------------------------------------------------------------
--- 6. Verify before committing. Every row must read ok.
+-- 6. Verify, then abort if anything is off.
+--
+--    Both inserts above are ON CONFLICT DO NOTHING, so they are silent about
+--    pre-existing state rather than authoritative. Two ways that bites:
+--      - a user who already had a habit keeps it, schedule and all, so the
+--        wrong schedule_type can survive a "successful" run;
+--      - re-running with a different alias adds corner rows without removing
+--        the old ones, leaving a subject with three witnesses. Home throws on
+--        `corners.length !== 2`, so that surfaces as a crash, not a warning.
+--
+--    A SELECT that merely prints "BROKEN" does not prevent any of this: the
+--    editor moves straight on to COMMIT. The DO block is what makes the
+--    transaction wrapper mean something. The SELECT is kept purely as
+--    human-readable output.
+--
+--    "Exactly one habit" needs no check: habits.user_id is UNIQUE, so the only
+--    failure mode the schema permits is zero.
 -- ---------------------------------------------------------------------------
 
 select
   p.display_name,
-  h.name        as habit,
-  h.schedule_type,
-  count(cm.witness_id) as witnesses,
-  case when count(cm.witness_id) = 2 and h.id is not null then 'ok' else 'BROKEN' end as status
+  h.name                                      as habit,
+  h.schedule_type                             as actual_schedule,
+  hp.schedule_type                            as expected_schedule,
+  (select count(*) from public.corner_members cm where cm.subject_id = q.id) as witnesses
 from squad q
+join habit_plan hp on hp.slot = q.slot
 join public.profiles p on p.id = q.id
 left join public.habits h on h.user_id = q.id
-left join public.corner_members cm on cm.subject_id = q.id
-group by p.display_name, h.name, h.schedule_type, h.id
 order by p.display_name;
+
+do $$
+declare
+  problems text;
+begin
+  select string_agg(format('  - %s: %s', display_name, issue), E'\n' order by display_name)
+  into problems
+  from (
+    select
+      p.display_name,
+      case
+        when h.id is null then
+          'no habit row was created'
+        when h.schedule_type is distinct from hp.schedule_type then
+          format(
+            'schedule is %L but should be %L — a pre-existing habit was kept by ON CONFLICT DO NOTHING',
+            h.schedule_type, hp.schedule_type)
+        when h.schedule_config is distinct from hp.schedule_config then
+          format(
+            'schedule_config is %s but should be %s — a pre-existing habit was kept',
+            h.schedule_config::text, hp.schedule_config::text)
+        when w.n <> 2 then
+          format(
+            '%s witnesses, expected exactly 2 — Home throws on anything but 2; clear stale corner_members rows and re-run',
+            w.n)
+      end as issue
+    from squad q
+    join habit_plan hp on hp.slot = q.slot
+    join public.profiles p on p.id = q.id
+    left join public.habits h on h.user_id = q.id
+    left join lateral (
+      select count(*) as n from public.corner_members cm where cm.subject_id = q.id
+    ) w on true
+  ) checked
+  where issue is not null;
+
+  if problems is not null then
+    raise exception E'Seed verification failed — nothing was committed:\n%', problems;
+  end if;
+end;
+$$;
 
 commit;
 

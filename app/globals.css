@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* docs/BUILD.md §11 — directional values, read off the PDF's descriptions, not yet confirmed
+   against the actual mockup art. This is a fixed brand look (near-black hero card on an off-white
+   page), not a light/dark-mode toggle, so there's deliberately no prefers-color-scheme override
+   here. --color-muted and --color-line aren't in §11 — reasonable additions for secondary text
+   and borders, not given values in the spec. */
+@theme {
+  --color-ink: #0e0e10;
+  --color-bg: #faf9f7;
+  --color-accent: #bc2b3e;
+  --color-backed: #459963;
+  --color-muted: #6b6b70;
+  --color-line: #e4e1dc;
+  --font-headline: var(--font-oswald);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}

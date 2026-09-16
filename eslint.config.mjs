@@ -18,6 +18,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // `vercel build` output — generated bundles, not source. Without this, debugging a
+    // deployment locally leaves artifacts that fail the lint gate in CLAUDE.md.
+    ".vercel/**",
     // Local state from the "remember" Claude Code plugin — not part of this project.
     ".remember/**",
   ]),

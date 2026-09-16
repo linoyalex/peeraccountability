@@ -58,7 +58,7 @@ begin
 
   if missing is not null then
     raise exception
-      'These addresses have not signed in yet (no auth.users row): %. Send each a magic link, complete sign-in once, then re-run.',
+      'These addresses do not exist in auth.users: %. Add each user with Auto Confirm enabled, then re-run.',
       missing;
   end if;
 end;

@@ -1,8 +1,8 @@
-import Image from "next/image";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { Hero, type HeroProofState } from "@/components/Hero";
+import { ProofCard } from "@/components/ProofCard";
 import {
   differenceInAppDays,
   formatAppDayWeekday,
@@ -35,6 +35,7 @@ const proofRowSchema = z.object({
   app_day: appDaySchema,
   submitted_at: z.string().min(1),
   photo_path: z.string().min(1),
+  note: z.string().nullable(),
   status: z.enum(["waiting", "backed", "broken"]),
   resolution: z.enum(["votes", "no_response"]).nullable(),
 });
@@ -84,15 +85,6 @@ function formatSubmittedAt(timestamp: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
-}
-
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
 }
 
 function nudgeFor(stats: RunStats, todayProofIsWaiting: boolean) {
@@ -161,7 +153,7 @@ export default async function HomePage() {
   const [proofsResult, cornersResult, subjectsResult] = await Promise.all([
     supabase
       .from("proofs")
-      .select("id,user_id,app_day,submitted_at,photo_path,status,resolution")
+      .select("id,user_id,app_day,submitted_at,photo_path,note,status,resolution")
       .eq("habit_id", habit.id)
       .gte("app_day", habit.start_date)
       .lte("app_day", today)
@@ -205,7 +197,7 @@ export default async function HomePage() {
   const pendingResult = witnessedSubjectIds.length
     ? await supabase
         .from("proofs")
-        .select("id,user_id,app_day,submitted_at,photo_path,status,resolution")
+        .select("id,user_id,app_day,submitted_at,photo_path,note,status,resolution")
         .in("user_id", witnessedSubjectIds)
         .eq("status", "waiting")
         .order("submitted_at", { ascending: true })
@@ -354,49 +346,14 @@ export default async function HomePage() {
           {reviewCards.length ? (
             <ul className="mt-5 space-y-4">
               {reviewCards.map((proof) => (
-                <li
-                  key={proof.id}
-                  className="overflow-hidden rounded-2xl border border-line bg-white shadow-sm"
-                >
-                  <div className="flex gap-4 p-4">
-                    <div className="relative size-24 shrink-0 overflow-hidden rounded-xl bg-line">
-                      <Image
-                        src={proof.signedUrl}
-                        alt={`Proof from ${proof.subjectName}`}
-                        fill
-                        sizes="96px"
-                        unoptimized
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1 py-1">
-                      <div className="flex items-center gap-2">
-                        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-ink font-headline text-[0.65rem] font-bold text-white">
-                          {initials(proof.subjectName)}
-                        </span>
-                        <p className="truncate font-semibold text-ink">{proof.subjectName}</p>
-                      </div>
-                      <p className="mt-3 text-xs text-muted">
-                        {formatSubmittedAt(proof.submitted_at)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 border-t border-line p-3">
-                    <button
-                      type="button"
-                      disabled
-                      className="min-h-11 rounded-xl bg-backed px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Back it
-                    </button>
-                    <button
-                      type="button"
-                      disabled
-                      className="min-h-11 rounded-xl bg-accent px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Call it
-                    </button>
-                  </div>
+                <li key={proof.id}>
+                  <ProofCard
+                    proofId={proof.id}
+                    signedUrl={proof.signedUrl}
+                    subjectName={proof.subjectName}
+                    submittedAt={formatSubmittedAt(proof.submitted_at)}
+                    note={proof.note}
+                  />
                 </li>
               ))}
             </ul>

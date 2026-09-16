@@ -11,7 +11,9 @@ import { createClient } from "@/lib/supabase/server";
 
 async function requireLocalDevelopmentLogin() {
   const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  // `next dev` has no trusted reverse proxy. X-Forwarded-Host is client-controlled here, so only
+  // the actual Host header may satisfy the loopback guard.
+  const host = requestHeaders.get("host");
   const allowedEmails = parseDevLoginEmails(process.env.DEV_TEST_USER_EMAILS);
 
   if (!isLocalDevelopmentRequest(host, process.env.NODE_ENV) || allowedEmails.length === 0) {

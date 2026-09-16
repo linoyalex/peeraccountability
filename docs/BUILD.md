@@ -167,8 +167,11 @@ Files: `proxy.ts`, `lib/supabase/server.ts`, `lib/supabase/client.ts`, `app/logi
      evaluated. Both variants take "today" as an explicit parameter, never call `new Date()`
      internally.
 3. **`postProof`** server action — verifies session server-side, computes `app_day`/`submitted_at`
-   itself (never trusts a client timestamp). **Updates the existing row in place** if a `waiting`/
-   `backed` proof already exists for today — never inserts a second row for the same app-day.
+   itself (never trusts a client timestamp). **Updates the existing row in place** if a `waiting`
+   proof already exists for today. A `backed` proof is immutable once the corner has approved it;
+   after a `broken` proof, "Start again" inserts a new waiting proof for the same app-day. This
+   behavior was explicitly confirmed during Part 7 review rather than allowing an approved photo
+   to be replaced after resolution.
 4. **`castVote`** → `cast_vote()` SQL function — `SELECT ... FOR UPDATE` locks the proof row, so two
    near-simultaneous votes can't both resolve it independently. Handles the split-vote case (1 back
    + 1 call stays `waiting`) correctly.
@@ -227,16 +230,19 @@ Bracketed values are template placeholders; the PDF's example values are shown f
 - Section label: "Your call"
 - Empty state: "Nobody needs you right now."
 - Pending review row: photo thumbnail, name, timestamp, two buttons: **"Back it"** / **"Call it"**
+- Vote failure: "Couldn’t record that. Try again."
 
 **Camera capture**
 - Header: "Proof for [Habit name]"
 - Cancel link
 - (shutter button, no label)
+- Photo preparation failure: "Couldn’t prepare that photo. Try again."
 
 **Note/send**
 - Helper text: "[Name] and [Name] will see this"
 - Note placeholder: "Add a note — optional"
 - Buttons: "Retake" / "Send it"
+- Send failure: "Couldn’t send it. Try again."
 
 **Resolution states** (History and Home, once a proof resolves — `pilot-scope.md` §A2)
 - Real consensus back: "[Name] and [Name] backed it." / "[N] in a row."
@@ -247,7 +253,8 @@ Bracketed values are template placeholders; the PDF's example values are shown f
 
 **History ("Your run")**
 - Header: "[Habit name]" with back chevron, "[N] in a row"
-- Row per day: date, thumbnail, "Backed" or "Cleared" + avatar initials of who voted (if any)
+- Row per day: date, thumbnail, "Backed", "Cleared", or "Called" + avatar initials of who voted
+  (if any)
 - Footer: "Week [N] of 4 · [schedule description] · [Name] & [Name]"
 - Button: "End this commitment"
 

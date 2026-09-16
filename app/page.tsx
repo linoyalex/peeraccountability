@@ -4,9 +4,9 @@ import { z } from "zod";
 import { Hero, type HeroProofState } from "@/components/Hero";
 import { ProofCard } from "@/components/ProofCard";
 import {
-  differenceInAppDays,
   formatAppDayWeekday,
   getAppDay,
+  getPilotWeekNumber,
   PILOT_TIME_ZONE,
 } from "@/lib/appDay";
 import {
@@ -292,10 +292,7 @@ export default async function HomePage() {
       : proofState === "idle" && todayIsRequired
         ? "Prove it"
         : null;
-  const weekNumber = Math.min(
-    4,
-    Math.max(1, Math.floor(differenceInAppDays(habit.start_date, today) / 7) + 1),
-  );
+  const weekNumber = getPilotWeekNumber(habit.start_date, today);
 
   const admin = reviewProofs.length ? createAdminClient() : null;
   const reviewCards = await Promise.all(

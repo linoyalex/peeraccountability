@@ -76,6 +76,10 @@ export function differenceInAppDays(start: string, end: string): number {
   return Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000);
 }
 
+export function getPilotWeekNumber(startDate: string, appDay: string): number {
+  return Math.min(4, Math.max(1, Math.floor(differenceInAppDays(startDate, appDay) / 7) + 1));
+}
+
 export function getAppDayWeekday(appDay: string): number {
   return parseAppDay(appDay).getUTCDay();
 }

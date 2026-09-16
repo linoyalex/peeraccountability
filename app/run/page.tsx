@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import {
-  differenceInAppDays,
   formatAppDayWeekday,
   getAppDay,
+  getPilotWeekNumber,
 } from "@/lib/appDay";
 import { calculateRunStats, habitScheduleSchema, type HabitSchedule } from "@/lib/streak";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -140,10 +140,7 @@ export default async function RunPage() {
     today,
     proofs: proofs.map((proof) => ({ appDay: proof.app_day, status: proof.status })),
   });
-  const weekNumber = Math.min(
-    4,
-    Math.max(1, Math.floor(differenceInAppDays(habit.start_date, today) / 7) + 1),
-  );
+  const weekNumber = getPilotWeekNumber(habit.start_date, today);
   const votesByProof = new Map<string, string[]>();
   for (const vote of votes) {
     const name = names.get(vote.voter_id);
@@ -166,9 +163,12 @@ export default async function RunPage() {
     <main className="min-h-svh bg-bg pb-10 text-ink">
       <div className="mx-auto w-full max-w-lg">
         <header className="bg-ink px-6 pb-8 pt-6 text-white">
-          <Link href="/" className="flex min-h-11 items-center text-sm text-white/75">
+          <Link
+            href="/"
+            aria-label="Back to Home"
+            className="flex min-h-11 items-center text-sm text-white/75"
+          >
             <span aria-hidden="true">←</span>
-            <span className="ml-2">Your run</span>
           </Link>
           <h1 className="mt-5 font-headline text-3xl font-bold">{habit.name}</h1>
           <p className="mt-3 font-headline text-xl font-bold text-white/85">
@@ -207,7 +207,7 @@ export default async function RunPage() {
                           : "bg-accent text-white"
                     }`}
                   >
-                    {isCleared ? "Cleared" : isBacked ? "Backed" : "Call it"}
+                    {isCleared ? "Cleared" : isBacked ? "Backed" : "Called"}
                   </p>
                   {proof.note ? <p className="mt-2 text-sm text-muted">{proof.note}</p> : null}
                   {voterNames.length ? (

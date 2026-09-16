@@ -4,9 +4,18 @@
 -- This file exists so the app can be exercised end to end before recruiting finishes.
 -- Run the teardown at the bottom before the real pilot starts.
 --
--- Prerequisite: all three addresses below must have signed in via magic link at least once,
--- so `handle_new_user()` has created their profiles row. This script only reads auth.users;
+-- Prerequisite: all three addresses below must already exist in auth.users, so that
+-- `handle_new_user()` has created their profiles row. This script only reads auth.users;
 -- it never creates accounts.
+--
+-- They do NOT need to have signed in. That trigger is `after insert on auth.users`, not
+-- anything to do with logging in, so the fastest way to create a witness is:
+--   Supabase -> Authentication -> Users -> Add user, with "Auto Confirm User" ticked.
+--
+-- Prefer that over magic links here. Supabase's built-in email service is capped at two
+-- sends per hour and the cap cannot be raised without configuring custom SMTP, so seeding
+-- via sign-in emails runs out of sends before a three-person squad is complete. Save the
+-- sign-in emails for when you actually need to *be* one of these users in the browser.
 --
 -- Why three accounts and not two: corner_members has `check (subject_id <> witness_id)` and the
 -- Home screen requires exactly two witnesses per subject (app/page.tsx). Three people is the

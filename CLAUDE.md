@@ -12,6 +12,7 @@ Project-specific instructions for Claude Code working in this repo. These apply 
   tokens, acceptance criteria, out-of-scope). Build prompts cite it by section number; the other
   docs are its sources and fuller rationale where it's terse.
 - `reviews/` — point-in-time reviews (PM, security, etc.). Historical record — add new dated reviews rather than editing old ones.
+- `HANDOFF.md` — current build status and anything a fresh session needs to know that isn't obvious from the other docs (uncommitted local state, per-machine setup steps, deliberate deviations from the plan). Overwritten, not versioned. Check it at the start of a session; update it before ending one.
 
 Treat the "Confirmed decisions" in `pilot-implementation-plan.md`, and `pilot-scope.md`'s adopted items above, as settled. If a request would reopen one of those — or would lock in the still-open B1 thresholds — say so explicitly and confirm before proceeding. Don't silently comply or silently refuse.
 

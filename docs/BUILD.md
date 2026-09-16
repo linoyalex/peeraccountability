@@ -333,3 +333,21 @@ Money is the one with the most obvious pull to add — it was in the original pl
 way to give the mechanic teeth. It's cut specifically because testing two new ideas (peer
 accountability *and* stakes) at once would tell you nothing about either; the schema is built so it
 can come back in v2.
+
+## Known limitations (accepted for v1)
+
+Found during the `rls-auditor` review of `supabase/schema.sql`/`policies.sql`, judged low-risk
+enough not to fix rather than overlooked. Documented here so a future schema change doesn't
+silently "fix" one without it being a deliberate choice. Full detail lives in the SQL comments at
+the cited locations.
+
+- **`app_day` self-drift on a directly-`PATCH`ed stale proof** (`proofs_set_submission_fields`
+  trigger, `schema.sql`). A still-`waiting` proof from a previous day, if updated directly via the
+  REST API rather than through the app, can have its `app_day` recomputed to today — trading one
+  day for another (blocked from duplicating by the unique index). Self-harm only; the app's own
+  code never triggers this since `postProof` only ever touches today's row.
+- **Opaque RLS rejection before seeding** (`proofs_insert_own` policy, `policies.sql`). If a pilot
+  user signs in before `seed.sql` has been run for them, tapping "Prove It" fails with a generic
+  RLS error rather than a friendly message, since `habit_id` can't match any row in `habits` yet.
+  Acceptable because seeding happens before real phones are in use (§14), but worth a friendlier
+  error message if this ever stops being true.

@@ -1,6 +1,11 @@
 -- Chalkline v1 — RLS policies
 -- Draft only. Run schema.sql first. See docs/BUILD.md §6 and the walkthrough that accompanies
 -- this file. RLS is already enabled on every table in schema.sql; this file only adds policies.
+--
+-- Every auth.uid() call below is wrapped as (select auth.uid()) — confirmed via Supabase's own
+-- performance advisor (get_advisors) that a bare auth.uid() in a policy gets re-evaluated once per
+-- row instead of once per query. Same semantics, no logic change; irrelevant at this pilot's scale
+-- but free to do correctly from the start.
 
 -- ============================================================================
 -- profiles — self, or anyone you're a subject/witness pair with
@@ -10,7 +15,7 @@ create policy "profiles_select_self_or_corner"
   on public.profiles
   for select
   to authenticated
-  using (public.is_related_or_self(auth.uid(), id));
+  using (public.is_related_or_self((select auth.uid()), id));
 
 -- No insert/update/delete policy: the handle_new_user() trigger (SECURITY DEFINER) is the only
 -- writer. A client can never insert or edit a profiles row directly.
@@ -24,7 +29,7 @@ create policy "habits_select_self_or_corner"
   on public.habits
   for select
   to authenticated
-  using (public.is_related_or_self(auth.uid(), user_id));
+  using (public.is_related_or_self((select auth.uid()), user_id));
 
 -- No insert/update/delete policy: habits are hand-seeded (docs/BUILD.md §14), not created via the
 -- app in v1 — the Setup screen is explicitly out of scope (§16).
@@ -37,7 +42,7 @@ create policy "corner_members_select_self"
   on public.corner_members
   for select
   to authenticated
-  using (auth.uid() = subject_id or auth.uid() = witness_id);
+  using ((select auth.uid()) = subject_id or (select auth.uid()) = witness_id);
 
 -- No insert/update/delete policy: hand-seeded via the SQL editor (as postgres, which bypasses
 -- RLS), never via the app.
@@ -50,7 +55,7 @@ create policy "proofs_select_self_or_corner"
   on public.proofs
   for select
   to authenticated
-  using (public.is_related_or_self(auth.uid(), user_id));
+  using (public.is_related_or_self((select auth.uid()), user_id));
 
 -- A subject can create their own proof, but only in the initial `waiting` state — never
 -- pre-resolved. submitted_at/app_day aren't constrained here because the
@@ -63,12 +68,12 @@ create policy "proofs_insert_own"
   for insert
   to authenticated
   with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and status = 'waiting'
     and resolution is null
     and resolved_at is null
-    and habit_id in (select h.id from public.habits h where h.user_id = auth.uid())
-    and photo_path like (auth.uid()::text || '/%')
+    and habit_id in (select h.id from public.habits h where h.user_id = (select auth.uid()))
+    and photo_path like ((select auth.uid())::text || '/%')
   );
 
 -- Lets postProof "update in place" (re-send a photo/note for today's still-open proof) without
@@ -80,14 +85,14 @@ create policy "proofs_update_own_while_waiting"
   on public.proofs
   for update
   to authenticated
-  using (user_id = auth.uid() and status = 'waiting')
+  using (user_id = (select auth.uid()) and status = 'waiting')
   with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and status = 'waiting'
     and resolution is null
     and resolved_at is null
-    and habit_id in (select h.id from public.habits h where h.user_id = auth.uid())
-    and photo_path like (auth.uid()::text || '/%')
+    and habit_id in (select h.id from public.habits h where h.user_id = (select auth.uid()))
+    and photo_path like ((select auth.uid())::text || '/%')
   );
 
 -- No delete policy: no client deletes, ever.
@@ -110,7 +115,7 @@ create policy "votes_select_self_or_corner"
     exists (
       select 1 from public.proofs p
       where p.id = votes.proof_id
-        and public.is_related_or_self(auth.uid(), p.user_id)
+        and public.is_related_or_self((select auth.uid()), p.user_id)
     )
   );
 
@@ -135,7 +140,7 @@ create policy "proof_photos_insert_own_folder"
   to authenticated
   with check (
     bucket_id = 'proofs'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 -- Needed for postProof's "update in place" re-post (docs/BUILD.md §8) if it overwrites the same
@@ -147,11 +152,11 @@ create policy "proof_photos_update_own_folder"
   to authenticated
   using (
     bucket_id = 'proofs'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   )
   with check (
     bucket_id = 'proofs'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 -- No select/delete policy on storage.objects for authenticated: every read happens through a

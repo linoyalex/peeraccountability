@@ -76,9 +76,9 @@ assuming these exist under these exact names:
 | **design** | `accessibility-review`, `ux-copy` — the app is copy-driven |
 | **qodo** *(optional)* | A second, independent review pass on every diff |
 
-`code-review` and `security-review` may already be available to you directly as skills, independent
-of any plugin — check before installing something redundant. Skip everything else; each installed
-plugin costs context in every session.
+`code-review` and `security-review` are already available to you directly as skills, independent of
+any plugin (confirmed in this environment) — don't install a plugin that just duplicates them. Skip
+everything else; each installed plugin costs context in every session.
 
 ---
 
@@ -119,7 +119,9 @@ plugin costs context in every session.
 > the database-role level, on top of it being scoped to one project.
 >
 > **3. `.claude/settings.json`** with a `PostToolUse` hook matching `Write|Edit` that runs
-> `npx tsc --noEmit && npx next lint`. This is a gate, not a suggestion — if it fails, the edit is
+> `npm run typecheck && npm run lint` (`next lint` no longer exists as of Next.js 16 — current
+> scaffolds wire `eslint` directly; before `package.json` exists, run the equivalent via `npx tsc
+> --noEmit`, deferring real lint until scripts exist). This is a gate, not a suggestion — if it fails, the edit is
 > wrong.
 >
 > **4. `.claude/agents/rls-auditor.md`** — subagent, `tools: Read, Grep, Glob, Bash`, `model: opus`.
@@ -167,7 +169,8 @@ browser that opens. If Supabase fails after that, the project ref in `.mcp.json`
 # Part 4 — PASTE: schema and policies
 
 > Using `docs/BUILD.md` §5 and §6, create `supabase/schema.sql` and `supabase/policies.sql` exactly
-> as specified, including `votes.voted_at` and the `best_run(p_commitment uuid)` function.
+> as specified, including `votes.voted_at`. Do not implement `best_run()` as a SQL function — see
+> §5's closing note on why that's computed in app code instead.
 >
 > Then write `supabase/seed.sql` as a template with four placeholder user IDs, following §14.
 >
@@ -177,6 +180,13 @@ browser that opens. If Supabase fails after that, the project ref in `.mcp.json`
 
 **YOU:** paste `schema.sql` then `policies.sql` into the Supabase SQL editor and run them. Then
 Storage → New bucket → `proofs`, **private**, and add the two policies from §6.
+
+**Then verify the grants actually landed, not just the policies.** Supabase auto-grants `EXECUTE`
+on every new function to `anon`/`authenticated`/`service_role` regardless of what the SQL's
+`revoke`/`grant` lines say — this bit us for real on this exact project (see `HANDOFF.md`/git
+history if you want the story). Ask Claude to check with `has_function_privilege()` for every
+`SECURITY DEFINER` function, for every client-facing role, against what §6 says each one should
+be. Do this again any time a new function gets added later, not just once now.
 
 ---
 
@@ -194,6 +204,10 @@ Storage → New bucket → `proofs`, **private**, and add the two policies from 
 >
 > The login screen must match the Sign in artboard: wordmark, the headline "Prove it to the people
 > who'd know.", the sub-line, an email field, and a "Send me a link" button. Copy verbatim from §10.
+>
+> Add `lint`, `typecheck`, `test`, and `build` scripts to `package.json` if `create-next-app` didn't
+> already, matching CLAUDE.md's testing standards — the hook uses `npx` directly so it doesn't
+> need these, but later verification steps assume `npm run <script>` works.
 >
 > Use plan mode first — show me the approach before you write files.
 >
@@ -223,6 +237,11 @@ Storage → New bucket → `proofs`, **private**, and add the two policies from 
 ---
 
 # Part 7 — PASTE: capture and verification
+
+**YOU, first:** Playwright's npm package resolves via `npx` already, but its actual browser
+binaries aren't installed on this machine yet. Run `npx playwright install chromium` once before
+this step — without it, the Playwright suite below and the `ui-verifier` agent in Part 8 will fail
+on first launch, not silently skip.
 
 > Build the rest of the loop, per `docs/BUILD.md` §8, §9, §13:
 >
@@ -307,6 +326,8 @@ person the first time — the iOS install path is not discoverable.
 | Photos load in dev, break in prod | Raw storage path used instead of a signed URL |
 | Streak off by a day | Something reimplemented the day-boundary math instead of importing `appDay.ts` |
 | It builds things you didn't ask for | Point it at `docs/BUILD.md` §16 and run the spec-auditor agent |
+| A `SECURITY DEFINER` function is callable by a role it shouldn't be | Supabase's default ACL grants `EXECUTE` to `anon`/`authenticated`/`service_role` on every new function, regardless of what the SQL says — revoke explicitly by role and verify with `has_function_privilege()` |
+| Playwright test/agent fails on first run, not before | Browser binaries aren't installed — `npx playwright install chromium` |
 
 ## Do not
 

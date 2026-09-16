@@ -30,7 +30,11 @@ begin
 end;
 $$;
 
-revoke all on function public.handle_new_user() from public;
+-- Trigger firing never requires the firing role to hold EXECUTE on the function, so revoking
+-- from every role (not just `public`) removes this from being directly RPC-callable at all
+-- without affecting the trigger. `revoke ... from public` alone is NOT enough on its own — see
+-- the note by set_proof_submission_fields below for why.
+revoke execute on function public.handle_new_user() from public, anon, authenticated, service_role;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -67,6 +71,10 @@ create table public.corner_members (
   check (subject_id <> witness_id)
 );
 
+-- the primary key covers subject_id; witness_id (the other direction is_related_or_self queries)
+-- has no covering index without this — flagged by Supabase's performance advisor
+create index corner_members_witness_id_idx on public.corner_members (witness_id);
+
 alter table public.corner_members enable row level security;
 
 -- ============================================================================
@@ -93,6 +101,9 @@ create table public.proofs (
 create unique index proofs_one_active_per_user_day
   on public.proofs (user_id, app_day)
   where status in ('waiting', 'backed');
+
+-- habit_id's foreign key has no covering index — flagged by Supabase's performance advisor
+create index proofs_habit_id_idx on public.proofs (habit_id);
 
 alter table public.proofs enable row level security;
 
@@ -144,7 +155,12 @@ begin
 end;
 $$;
 
-revoke all on function public.set_proof_submission_fields() from public;
+-- Supabase auto-grants EXECUTE on every new public-schema function to anon/authenticated/
+-- service_role via a project-level default ACL (`pg_default_acl`) — confirmed live on this
+-- project. `revoke ... from public` alone does NOT undo that; each role needs an explicit revoke.
+-- Same trigger-firing note as handle_new_user above.
+revoke execute on function public.set_proof_submission_fields()
+  from public, anon, authenticated, service_role;
 
 drop trigger if exists proofs_set_submission_fields on public.proofs;
 create trigger proofs_set_submission_fields
@@ -164,6 +180,10 @@ create table public.votes (
   voted_at timestamptz not null default now(),
   unique (proof_id, voter_id)
 );
+
+-- unique(proof_id, voter_id) covers lookups by proof_id but not by voter_id alone; voter_id's
+-- foreign key has no covering index without this — flagged by Supabase's performance advisor
+create index votes_voter_id_idx on public.votes (voter_id);
 
 alter table public.votes enable row level security;
 
@@ -185,6 +205,11 @@ as $$
          or (cm.subject_id = b and cm.witness_id = a)
     );
 $$;
+
+-- Must stay callable by `authenticated` — every self-or-corner SELECT policy in policies.sql
+-- calls this from its USING clause, so revoking execute here would break every one of those
+-- policies, not just direct RPC calls to this function.
+grant execute on function public.is_related_or_self(uuid, uuid) to authenticated;
 
 -- ============================================================================
 -- cast_vote — the only way votes get written; SECURITY DEFINER to bypass the
@@ -258,7 +283,7 @@ begin
 end;
 $$;
 
-revoke all on function public.cast_vote(uuid, text) from public;
+revoke execute on function public.cast_vote(uuid, text) from public, anon;
 grant execute on function public.cast_vote(uuid, text) to authenticated;
 
 -- ============================================================================
@@ -292,7 +317,11 @@ begin
 end;
 $$;
 
-revoke all on function public.resolve_stale_proof(uuid) from public;
+-- Must be revoked from `authenticated` explicitly, not just `public` — Supabase's default ACL
+-- (see the cast_vote note above) grants execute to authenticated on every new function by
+-- default, and this one must never be directly callable by a client, only via resolve_stale()
+-- and resolve_all_stale_proofs() below.
+revoke execute on function public.resolve_stale_proof(uuid) from public, anon, authenticated;
 
 -- ============================================================================
 -- resolve_stale — Home-load backstop, scoped to the calling user's own
@@ -326,7 +355,7 @@ begin
 end;
 $$;
 
-revoke all on function public.resolve_stale() from public;
+revoke execute on function public.resolve_stale() from public, anon;
 grant execute on function public.resolve_stale() to authenticated;
 
 -- ============================================================================
@@ -352,7 +381,10 @@ begin
 end;
 $$;
 
-revoke all on function public.resolve_all_stale_proofs() from public;
+-- Same default-ACL caveat as resolve_stale_proof above — authenticated must be revoked
+-- explicitly, or Supabase's default grant leaves this callable directly by any signed-in user
+-- instead of only the cron route (which uses the secret/service_role key).
+revoke execute on function public.resolve_all_stale_proofs() from public, anon, authenticated;
 grant execute on function public.resolve_all_stale_proofs() to service_role;
 
 -- ============================================================================

@@ -59,9 +59,10 @@ Nothing in this table gets re-litigated during execution without checking back i
 ## §4 — Project structure & conventions
 
 ```
+proxy.ts                 # Next.js 16's middleware.ts — excludes /auth/callback, see §7
 lib/supabase/{client,server,admin}.ts
-src/lib/appDay.ts        # single source of truth for "what day is it"
-src/lib/streak.ts        # streak/run computation, both schedule-type variants
+lib/appDay.ts            # single source of truth for "what day is it"
+lib/streak.ts            # streak/run computation, both schedule-type variants
 app/login/page.tsx
 app/auth/callback/route.ts
 app/page.tsx             # Home
@@ -76,6 +77,9 @@ supabase/schema.sql
 supabase/policies.sql
 supabase/seed.sql
 ```
+
+No `src/` directory — chosen when scaffolding in Part 5 to match the majority of this tree already
+having no `src/` prefix.
 
 ESLint strict flat config, `no-explicit-any: error`. `database.types.ts` generated from the live
 schema, not hand-written.
@@ -130,7 +134,17 @@ schema, not hand-written.
 
 Magic-link email auth via Supabase, no passwords. `proxy.ts` (Next.js 16 renamed `middleware.ts` to
 `proxy.ts` — same file convention and job, refreshing the session on every request; use `proxy.ts`
-for anything scaffolded from here on) refreshes the session on every request. Server code defaults
+for anything scaffolded from here on) refreshes the session on every request.
+
+**`proxy.ts`'s matcher must exclude `/auth/callback`.** Confirmed live, from actual auth logs, not
+speculation: `proxy.ts` calling `getClaims()` on the callback request interfered with the PKCE
+`code_verifier` cookie the callback route needs to redeem the magic-link code, causing a
+same-second `"invalid flow state, flow state has expired"` failure on the *first and only*
+exchange attempt (not a real timeout — the whole thing failed one second after the link was
+clicked). Fix is at the matcher level, not by treating `/auth/callback` as a "public path" inside
+`proxy.ts`'s own logic — the route needs proxy.ts not to run against it at all.
+
+Server code defaults
 to `supabase.auth.getClaims()` for protecting routes/data — it verifies the JWT signature locally
 against the project's JWKS on every call, no network round-trip. Use `getUser()` instead only where
 a fresh, server-verified record is specifically needed (it costs a call to the Auth server). Never

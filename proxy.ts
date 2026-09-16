@@ -31,7 +31,10 @@ export async function proxy(request: NextRequest) {
   // unrevalidated session-cookie data (docs/BUILD.md §7).
   const { data } = await supabase.auth.getClaims();
   const isAuthed = !!data?.claims;
-  const isPublicPath = PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
+  const isDevelopmentLogin =
+    process.env.NODE_ENV === "development" && request.nextUrl.pathname === "/dev-login";
+  const isPublicPath =
+    isDevelopmentLogin || PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
 
   if (!isAuthed && !isPublicPath) {
     const url = request.nextUrl.clone();

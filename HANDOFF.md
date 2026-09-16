@@ -1,6 +1,6 @@
 # Chalkline — Handoff
 
-**Last updated:** 2026-09-16, ~11:40 ET. This file is overwritten, not versioned — it reflects current state only. Git history has every past version if you need it.
+**Last updated:** 2026-09-16, ~12:30 ET. This file is overwritten, not versioned — it reflects current state only. Git history has every past version if you need it.
 
 ## Doc map — read in this order if you're new here
 
@@ -20,8 +20,10 @@
 - Part 6's TDD suite has 21 passing tests covering the 4am boundary (including both DST transitions), daily/fixed streak breaks and rest days, same-day re-post after a broken proof, floating quota edges/Monday rollover/current-week exclusion, and schedule validation.
 - **SETUP.md Part 7 is implemented on `feat/part-7-pilot-loop`, not yet merged:** browser-side photo conversion keeps JPEG quality 0.72 while reducing the longest edge to at most 1280px and the result to at most 300KB; `/capture` runs the camera/preview/note/send flow; authenticated server actions derive identity/day/path server-side, update a waiting same-day proof in place, and delegate voting to `cast_vote()`; Home uses functional optimistic `ProofCard`s; `/run` renders signed private photos and visibly distinct Backed/Cleared history states.
 - Part 7 has 31 passing Vitest tests and 6 passing Playwright tests. Playwright exercises the actual checked-in `cast_vote()` SQL in ephemeral in-process PostgreSQL (one/two backs, two calls, split vote, outsider denial), same-day proof replacement, and the real browser image compressor. Typecheck, lint, the production webpack build, and a manual security pass all pass.
-- The Home/capture/vote/history loop has **not** been exercised against a seeded pilot account or real phone. The live project is still unseeded, so authenticated Home still throws before those screens can be walked end to end.
-- **The live database is still unseeded and Home therefore throws for every real account.** Confirmed by query: 3 auth users/profiles, 0 habits, 0 corner_members. `app/page.tsx` raises "No seeded commitment found for the signed-in user" with no habit, and requires exactly two corner members after that. `supabase/seed-test.sql` unblocks this without waiting on recruiting — but it needs **three** auth users, because `corner_members` enforces `subject_id <> witness_id`. Two is not enough for a valid squad.
+- **A local-only no-email test login is implemented on the Part 7 branch.** `/dev-login` uses the Admin `generateLink()` API and the cookie-backed client's `verifyOtp()` to create a genuine seeded-user session without consuming Supabase's email quota. It is guarded by `NODE_ENV === "development"`, a loopback-only Host check, and the server-only `DEV_TEST_USER_EMAILS` allow-list. The allow-list is populated in this machine's gitignored `.env.local`; `.env.example` documents the setting. Production verification returned a redirect to `/login`, and no secret/config/test email appeared in `.next/static`. The no-email generate/verify exchange was also exercised successfully against the live project for one witness account.
+- The dev-login addition raises the Vitest total to **39 passing tests**. Typecheck, lint, unit tests, and the production webpack build pass after the change.
+- The Home/capture/vote/history loop has **not** yet been walked end to end or tested on a real phone. Authentication through the local bypass has been confirmed by the user.
+- **The live database now has a complete throwaway test squad.** Read-only verification after the seed found 3 profiles, 3 habits, 6 corner-member rows, 0 proofs, and 0 votes. Each subject therefore has the two distinct witnesses Home requires. The locally substituted `supabase/seed-test.sql` remains deliberately uncommitted because it contains real test addresses.
 - Supabase project + Vercel account created; `.mcp.json` configured and authenticated in this session. GitHub's Supabase post-merge check passed.
 - **Vercel is fixed:** PR #3 merged as `b021061`; its preview and the resulting production deployment both completed successfully after `vercel.json` pinned the Next.js framework.
 - Claude Code workspace configured and committed: typecheck/lint hook, three audit subagents (`rls-auditor`, `spec-auditor`, `ui-verifier`), path-scoped rules.
@@ -29,7 +31,7 @@
 
 ## Next concrete steps, in order
 
-1. Seed a testable squad. **Accounts already exist** — `auth.users` has 3 rows (`linoyalex@gmail.com`, plus two `+alias` throwaways), created via Supabase dashboard "Add user" with Auto Confirm, not magic link (see rate-limit note below). `habits`/`corner_members` are still empty. Substitute the four placeholders in `supabase/seed-test.sql` (three emails and a display name), run it, and walk Home → capture → witness vote → history by hand. The script aborts rather than committing a half-valid squad, so a clean run is meaningful.
+1. Walk the seeded squad through Home → capture → witness vote → history. Restart `next dev`, open `http://localhost:3000/dev-login` in three separate browser profiles, and choose a different seeded identity in each. Exercise two backs, two calls followed by same-day “Start again,” and a split vote; then perform the real-phone camera check.
 2. Finish SETUP.md Part 8: run the full acceptance list, RLS/spec/UI audits, real-data browser verification, and the manual two-tab concurrent-vote check (PGlite is intentionally single-connection and cannot cover that race).
 3. Continue through Part 9.
 4. Separately, not blocking the build: recruit the 4 real squad members and fill in `seed.sql`'s placeholder IDs (see "Still open" below). Run `seed-test.sql`'s teardown before the real pilot starts.

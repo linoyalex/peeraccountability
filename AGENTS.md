@@ -16,6 +16,27 @@ instructions drift when one copy gets edited and the other doesn't. Read the rea
 If you're picking up work in this repo, read those three, in that order, before doing anything
 else.
 
+## What you don't automatically get, that Claude Code sessions did
+
+These are Claude-Code-specific mechanisms with no Codex equivalent — the guidance behind each is
+still written down in plain text above, just not automated for you the same way. Apply it by hand:
+
+- **No typecheck/lint gate runs automatically after your edits.** `.claude/settings.json` wires
+  `npm run typecheck && npm run lint` after every write in Claude Code; here, run those yourself
+  before considering anything done.
+- **No `rls-auditor`/`spec-auditor`/`ui-verifier` subagents.** `.claude/agents/*.md` describes what
+  each one checks — before touching `supabase/**`, RLS, or `SECURITY DEFINER` functions, read
+  `.claude/agents/rls-auditor.md` and do that same bypass-attempt exercise yourself. Same idea for
+  the other two before merging or shipping.
+- **No path-scoped rules auto-load.** `.claude/rules/supabase.md` and `.claude/rules/ui.md` have
+  real, specific constraints (RLS mandatory, no secret key in the browser, tap targets ≥44px, copy
+  verbatim from `docs/BUILD.md` §10) — read them directly when working in those paths.
+- **No MCP servers.** `.mcp.json` configures hosted, read-only Supabase/Vercel access plus
+  Playwright for Claude Code specifically; it won't carry over. If you need to inspect the live
+  database, use the Supabase dashboard/CLI directly — and if you ever gain write access to it by
+  any means, the same rule applies as in `CLAUDE.md`: schema changes need the user's explicit
+  buy-in before they're applied to the real project, drafting locally is fine.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

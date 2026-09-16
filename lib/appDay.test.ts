@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAppDay } from "./appDay";
+import { getAppDay, getPilotWeekNumber } from "./appDay";
 
 describe("getAppDay", () => {
   it("keeps timestamps before 4am Eastern on the previous app day", () => {
@@ -23,5 +23,18 @@ describe("getAppDay", () => {
 
   it("rejects an invalid timestamp", () => {
     expect(() => getAppDay(new Date("not-a-date"))).toThrow(RangeError);
+  });
+});
+
+describe("getPilotWeekNumber", () => {
+  it.each([
+    ["2026-09-15", "2026-09-14", 1],
+    ["2026-09-15", "2026-09-15", 1],
+    ["2026-09-15", "2026-09-21", 1],
+    ["2026-09-15", "2026-09-22", 2],
+    ["2026-09-15", "2026-10-12", 4],
+    ["2026-09-15", "2026-10-13", 4],
+  ])("maps %s through %s to pilot week %i", (startDate, appDay, expected) => {
+    expect(getPilotWeekNumber(startDate, appDay)).toBe(expected);
   });
 });
